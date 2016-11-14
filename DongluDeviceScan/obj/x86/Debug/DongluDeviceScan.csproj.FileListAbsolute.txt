@@ -6,3 +6,5 @@ e:\文档\visual studio 2010\Projects\DongluDeviceScan\DongluDeviceScan\obj\x86\
 e:\文档\visual studio 2010\Projects\DongluDeviceScan\DongluDeviceScan\obj\x86\Debug\DongluDeviceScan.pdb
 e:\文档\visual studio 2010\Projects\DongluDeviceScan\DongluDeviceScan\bin\Debug\DongluDeviceScan.exe.config
 e:\文档\visual studio 2010\Projects\DongluDeviceScan\DongluDeviceScan\obj\x86\Debug\DongluDeviceScan.Form1.resources
+E:\文档\Visual Studio 2010\Projects\DongluDeviceScan\DongluDeviceScan\obj\x86\Debug\DongluDeviceScan.csprojResolveAssemblyReference.cache
+E:\文档\Visual Studio 2010\Projects\DongluDeviceScan\DongluDeviceScan\bin\Debug\Tftp.Net.dll
