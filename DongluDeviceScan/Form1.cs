@@ -22,7 +22,6 @@ namespace DongluDeviceScan
             InitializeComponent();
             skinTextBox1.Text = "192.168.1.1";
             skinTextBox2.Text = "192.168.1.255";
-            skinTextBox3.Text = "";
             skinTextBox4.Text = "";
         }
 
@@ -30,7 +29,9 @@ namespace DongluDeviceScan
         {
             skinTreeView1.Nodes.Clear();
             TreeNode dongluNode = new TreeNode("东陆设备(0个)");
+            dongluNode.Tag = "东陆设备";
             TreeNode unKnowNode = new TreeNode("未知设备(0个)");
+            unKnowNode.Tag = "未知设备";
 
             skinTreeView1.Nodes.Add(dongluNode);
             skinTreeView1.Nodes.Add(unKnowNode);
@@ -45,8 +46,7 @@ namespace DongluDeviceScan
 
         private void _myPing_PingCompleted(object sender, PingCompletedEventArgs e)
         {
-           
-            Console.WriteLine("UserState:" + e.UserState);
+   
             if (!e.UserState.Equals(skinProgressBar1.Name))
             {
                 return;
@@ -74,20 +74,64 @@ namespace DongluDeviceScan
                 BeginInvoke((new EventHandler(delegate (object o, EventArgs ea)
                 {
                     TreeNode td = skinTreeView1.Nodes[1];
-                    td.Nodes.Add(new TreeNode(ip + "[" + netUtil.getMacAddress(ip) + "]"));
+                    td.Nodes.Add(new TreeNode(ip + "[" + mack_key + "]"));
                     td.Text = "未知设备(" + td.Nodes.Count + "个)";
                 })));
             }
             else
             {
+               
                 BeginInvoke((new EventHandler(delegate (object o, EventArgs ea)
                 {
                     TreeNode td = skinTreeView1.Nodes[0];
-                    td.Nodes.Add(new TreeNode(ip + "[" + netUtil.getMacAddress(ip) + "]" + deviceMac));
-                    td.Text = "东陆设备(" + td.Nodes.Count + "个)";
+                    TreeNode findNodes = FindNodeByValue(td,deviceMac);
+                    if (findNodes == null)
+                    {
+                        TreeNode node = new TreeNode(deviceMac);
+                        node.Tag = deviceMac;
+                        node.Nodes.Add(new TreeNode(ip + "[" + mack_key + "]"));
+                        node.Text = node.Tag + "(" + node.Nodes.Count +"个设备)";
+                        td.Nodes.Add(node);
+                    }
+                    else
+                    {
+                        findNodes.Nodes.Add(new TreeNode(ip + "[" + mack_key + "]"));
+                        findNodes.Text = findNodes.Tag + "(" + findNodes.Nodes.Count + "个设备)";
+                    }
+                    int totalSize = getTreeNodeChildrenSize(td);
+                    td.Text = td.Tag + "(" + totalSize + "个设备)";
+                    skinTreeView1.ExpandAll();
                 })));
 
             }
+        }
+        private TreeNode FindNodeByValue(TreeNode tnParent, string strValue)
+        {
+            if (tnParent == null) return null;
+            if ((tnParent.Tag as string) == strValue) return tnParent;
+
+            TreeNode tnRet = null;
+            foreach (TreeNode tn in tnParent.Nodes)
+            {
+                tnRet = FindNodeByValue(tn, strValue);
+                if (tnRet != null) break;
+            }
+            return tnRet;
+        }
+
+        public int getTreeNodeChildrenSize(TreeNode treeNode) {
+            int i = 0;
+            foreach (TreeNode tn in treeNode.Nodes) {
+                if (tn.Nodes.Count == 0)
+                {
+                    i++;
+                }
+                else
+                {
+                    i = i + getTreeNodeChildrenSize(tn);
+                }
+            }
+            return i;
         }
 
         public string parseDeviceMac(string mac_key)
@@ -159,12 +203,12 @@ namespace DongluDeviceScan
 
         private void macThread()
         {
-            foreach (string s in ipList)
-            {
-                Console.WriteLine("key:" + key + "  s:" + s);
-                netUtil.checkIp(s, key, new System.Net.NetworkInformation.PingCompletedEventHandler(_myPing_PingCompleted));
+            for (int i = 0; i < ipList.Count; i++) {
+                if (i % 10 == 0) {
+                    Thread.Sleep(500);
+                }
+                netUtil.checkIp(ipList.ElementAt(i), key, new System.Net.NetworkInformation.PingCompletedEventHandler(_myPing_PingCompleted));
             }
-
         }
 
         private void afterCheck(object sender, TreeViewEventArgs e)
@@ -174,41 +218,83 @@ namespace DongluDeviceScan
 
         private void skinButton2_Click(object sender, EventArgs e)
         {
-            if (skinTextBox3.Text.Trim().Length == 0)
-            {
-                MessageBox.Show("请选中一个设备", "提示");
-                return;
-            }
             if (skinTextBox4.Text.Trim().Length == 0)
             {
                 MessageBox.Show("请选择升级文件", "提示");
                 return;
             }
-            tftpDownLoad(skinTextBox3.Text, skinTextBox4.Text);
+
+            if (skinTextBox3.Text.Trim().Length != 0)
+            {
+                if (netUtil.isAddressIp(skinTextBox3.Text.Trim()))
+                {
+                    tftpDownLoad(skinTextBox3.Text.Trim(), skinTextBox4.Text);
+                    return;
+                }
+                else {
+                    MessageBox.Show("设备ip输入有误", "提示");
+                    return;
+                }
+                
+            }
+
+            List<TreeNode> treeNodeList = new List<TreeNode>();
+            getAllTreeNodeCheck(skinTreeView1.Nodes, treeNodeList);
+            foreach (TreeNode tn in treeNodeList)
+            {
+                Console.WriteLine("checked: " + tn.Checked + " check name:" + tn.Text);
+                string deviceIp = tn.Text.Substring(0, tn.Text.IndexOf("["));
+                tftpDownLoad(deviceIp, skinTextBox4.Text);
+            }
+        }
+
+        public void getAllTreeNodeCheck(TreeNodeCollection treeNodes, List<TreeNode> nodeList) {
+            foreach(TreeNode tn in treeNodes){
+                if (tn.Nodes.Count == 0 && tn.Checked) {
+                    nodeList.Add(tn);
+                }
+                if (tn.Nodes.Count != 0) {
+                    getAllTreeNodeCheck(tn.Nodes, nodeList);
+                }
+            }
         }
 
         public void tftpDownLoad(string ip, string fileName)
         {
-            FileStream fs = new FileStream(fileName, FileMode.Open, FileAccess.Read);
-            skinProgressBar1.Maximum = (int)fs.Length;
-            skinProgressBar1.Value = skinProgressBar1.Maximum / 4;
-            Console.WriteLine("下载文件：" + fileName);
-            Console.WriteLine("下载设备：" + ip);
-            netUtil.iap(ip, 10001);
-            skinProgressBar1.Value = skinProgressBar1.Maximum / 2;
+            if (!netUtil.checkIpConnect(ip)) {
+                MessageBox.Show("升级设备:" + ip + "失败", "提示");
+                return;
+            }
+            try
+            {
+                FileStream fs = new FileStream(fileName, FileMode.Open, FileAccess.Read);
+                skinProgressBar1.Maximum = (int)fs.Length;
+                skinProgressBar1.Value = skinProgressBar1.Maximum / 4;
+                Console.WriteLine("下载文件：" + fileName);
+                Console.WriteLine("下载设备：" + ip);
+                netUtil.iap(ip, 10001);
+                skinProgressBar1.Value = skinProgressBar1.Maximum / 3;
 
-            var client = new TftpClient(ip, 10001);
+                var client = new TftpClient(ip, 10001);
 
-            var transfer = client.Upload(fileName);
-            transfer.TransferMode = TftpTransferMode.octet;
+                var transfer = client.Upload(fileName);
+                transfer.TransferMode = TftpTransferMode.octet;
+                transfer.UserContext = ip;
 
-            transfer.OnProgress += new TftpProgressHandler(transfer_OnProgress);
-            transfer.OnFinished += new TftpEventHandler(transfer_OnFinshed);
-            transfer.OnError += new TftpErrorHandler(transfer_OnError);
+                transfer.OnProgress += new TftpProgressHandler(transfer_OnProgress);
+                transfer.OnFinished += new TftpEventHandler(transfer_OnFinshed);
+                transfer.OnError += new TftpErrorHandler(transfer_OnError);
+                
 
-            transfer.Start(fs);
+                transfer.Start(fs);
 
-            TransferFinishedEvent.WaitOne();
+             
+                TransferFinishedEvent.WaitOne();
+                Thread.Sleep(5000);
+            }
+            catch (Exception e) {
+                Console.WriteLine(e.Message);
+            }
         }
 
         void transfer_OnProgress(ITftpTransfer transfer, TftpTransferProgress progress)
@@ -217,34 +303,27 @@ namespace DongluDeviceScan
             {
                 skinProgressBar1.Value = progress.TransferredBytes;
             })));
+            TransferFinishedEvent.Set();
         }
 
 
         void transfer_OnError(ITftpTransfer transfer, TftpTransferError error)
         {
             Console.WriteLine("Transfer failed: " + error);
-            TransferFinishedEvent.Set();
-            MessageBox.Show("升级失败", "提示");
+            MessageBox.Show("升级设备:" + transfer.UserContext + "失败", "提示");
+            TransferFinishedEvent.Reset();
         }
 
         void transfer_OnFinshed(ITftpTransfer transfer)
         {
             Console.WriteLine("Transfer succeeded.");
-            TransferFinishedEvent.Set();
-            MessageBox.Show("升级成功", "提示");
-        }
-
-        private void skinTreeView1_NodeMouseClick(object sender, TreeNodeMouseClickEventArgs e)
-        {
-            try
+            BeginInvoke((new EventHandler(delegate (object o, EventArgs e)
             {
-                string nodeText = e.Node.Text;
-                skinTextBox3.Text = nodeText.Substring(0, nodeText.IndexOf("["));
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine(ex.Message);
-            }
+                skinProgressBar1.Value = skinProgressBar1.Maximum;
+            })));
+            
+            TransferFinishedEvent.Reset();
+            MessageBox.Show("升级设备:"+transfer.UserContext+"成功", "提示");
         }
 
         private void skinButton3_Click(object sender, EventArgs e)

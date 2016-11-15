@@ -7,6 +7,9 @@ using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using System.Net.Sockets;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.IO;
 
 namespace DongluDeviceScan
 {
@@ -18,20 +21,45 @@ namespace DongluDeviceScan
         private static extern int SendARP(Int32 DestIP, Int32 SrcIP, ref Int64 pMacAddr, ref Int32 PhyAddrLen);
 
         private byte[] sendMessage = { 0x01, 0x57, 0x00, 0x01, 0x00, 0x01, 0x04, 0x02, 0x44, 0x4C, 0X32, 0X30, 0X31, 0X35, 0X30, 0X31, 0X32, 0X30, 0X03, 0X00 };
-
+        private ManualResetEvent connectDone = new ManualResetEvent(false);
         public void iap(String ip, int port) {
             Console.WriteLine("进入iap 命令 " + ip + ":" + port);
             try
             {
-                ///创建socket并连接到服务器
-                Socket c = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-                c.Connect(ip, port);
-                c.Send(sendMessage);
-                c.Close(2000);
+               
+                IPAddress address = IPAddress.Parse(ip);
+                IPEndPoint remoteEP = new IPEndPoint(address, Int32.Parse("10001"));////网络端点表示为 IP 地址和端口号
+                Socket clientSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                connectDone.Reset();
+                clientSocket.BeginConnect(remoteEP, new AsyncCallback(ConnectCallback), clientSocket);
+                connectDone.WaitOne(2000, false);//等待5秒
+                if (clientSocket.Connected)
+                {
+                    clientSocket.Send(sendMessage);
+                    clientSocket.Close(1000);
+                }
             }
             catch (Exception e) {
                 Console.WriteLine("iap 进入失败！");
                 Console.WriteLine(e.Message);
+            }
+        }
+
+        private void ConnectCallback(IAsyncResult ar)
+        {
+            try
+            {
+                Socket client = (Socket)ar.AsyncState;
+                client.EndConnect(ar);
+
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("检查设备ip通讯失败:" + ex.Message);
+            }
+            finally
+            {
+                connectDone.Set();
             }
         }
 
@@ -41,18 +69,44 @@ namespace DongluDeviceScan
             {
                 IPAddress address = IPAddress.Parse(ip);
                 Ping ping = new Ping();
+
+                PingOptions po = new PingOptions();
+                po.DontFragment = true;
+
+                string data = "Test Data!";
+                byte[] buffer = Encoding.ASCII.GetBytes(data);
+                int timeout = 3000;
+
                 ping.PingCompleted += asynEvent;
-                ping.SendAsync(address, 1000, key);
+                ping.SendAsync(address, timeout, buffer, po, key);
             }
             catch (Exception e) {
                 Console.WriteLine(e.Message);
             }
         }
+        public bool checkIpConnect(string ip)
+        {
+            try
+            {
+                Ping ping = new Ping();
 
+                PingOptions po = new PingOptions();
+                po.DontFragment = true;
+
+                string data = "Test Data!";
+                byte[] buffer = Encoding.ASCII.GetBytes(data);
+                int timeout = 3000;
+                PingReply pr = ping.Send(ip, timeout, buffer, po);
+                return pr.Status == IPStatus.Success;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+                return false;
+            }
+        }
         public string getMacAddress(string IpAddress)
         {
-
-            int start = System.DateTime.Now.Millisecond;
             string macAddress = "";
             Int32 ldest = 0;
             try
@@ -71,7 +125,6 @@ namespace DongluDeviceScan
             }
             catch (Exception err)
             {
-                //    throw new Exception("在解析MAC地址过程发生了错误!"); 
                 MessageBox.Show(err.Message);
             }
             string originalMACAddress = macinfo.ToString("X4");
@@ -85,15 +138,16 @@ namespace DongluDeviceScan
                 mac5 = originalMACAddress.Substring(2, 2);
                 mac6 = originalMACAddress.Substring(0, 2);
                 macAddress = mac1 + ":" + mac2 + ":" + mac3 + ":" + mac4 + ":" + mac5 + ":" + mac6;
-                //canPing = true;
             }
             else
             {
                 macAddress = "无法探测到MAC地址";
-                //canPing = false;
             }
-            Console.WriteLine("探测MAC地址耗时：" + (System.DateTime.Now.Millisecond - start));
             return macAddress;
+        }
+
+        public Boolean isAddressIp(string ipStr) {
+            return Regex.IsMatch(ipStr, @"^((2[0-4]\d|25[0-5]|[01]?\d\d?)\.){3}(2[0-4]\d|25[0-5]|[01]?\d\d?)$");
         }
 
         public List<string> getAllScanIp(string startIp,string endIp) {
